@@ -7,6 +7,7 @@
 #include <iterator>
 #include <vector>
 #include <forward_list>
+#include <deque>
 
 class Entity {
 public:
@@ -60,6 +61,8 @@ class And : public Query {
     }
 };
 
+class EntityExists : public std::exception {};
+
 class DB : public IDB {
     public:
     std::forward_list<std::shared_ptr<Entity>> query(const Term &q) override {
@@ -91,7 +94,14 @@ class DB : public IDB {
         return q.visit(*this);
     }
 
+    std::shared_ptr<Entity> get(const std::string &id) {
+        return forward_index[id];
+    }
+
     void add(std::shared_ptr<Entity> &e) {
+        if (forward_index[e->id])
+            throw EntityExists();
+
         using namespace std;
         istringstream iss(e->content);
         vector<string> tokens{istream_iterator<string>{iss},
@@ -102,35 +112,260 @@ class DB : public IDB {
             bucket.merge(ins);
             bucket.unique();
         }
+
+        forward_index[e->id] = e;
     }
 
     private:
     std::unordered_map<std::string, std::forward_list<std::shared_ptr<Entity>>> inverted_index;
+    std::unordered_map<std::string, std::shared_ptr<Entity>> forward_index;
+};
+
+
+class InputExpr;
+class Symbol;
+class String;
+class List;
+class IInterpreter {
+    public:
+    virtual void interpret(const InputExpr &e) = 0;
+    virtual void interpret(const Symbol &e) = 0;
+    virtual void interpret(const String &e) = 0;
+    virtual void interpret(const List &e) = 0;
+};
+
+class InputExpr {
+    public:
+    virtual void visit(IInterpreter &i) const = 0;
+};
+class Symbol : public InputExpr {
+    public:
+    Symbol(std::string label) : label(label) {};
+    virtual void visit(IInterpreter &i) const override { i.interpret(*this); };
+
+    std::string label;
+};
+class String : public InputExpr {
+    public:
+    String(std::string str) : str(str) {};
+    virtual void visit(IInterpreter &i) const override { i.interpret(*this); };
+
+    std::string str;
+};
+class List : public InputExpr {
+    public:
+    List(std::vector<std::shared_ptr<InputExpr>> items) : items(items) {};
+    virtual void visit(IInterpreter &i) const override { i.interpret(*this); };
+
+    std::vector<std::shared_ptr<InputExpr>> items;
+};
+
+class Parser {
+    public:
+    std::shared_ptr<InputExpr> parse(std::string input) {
+        auto tokens = tokenize(input);
+        return parse_tokens(tokens);
+    };
+
+    private:
+    std::shared_ptr<InputExpr> parse_tokens(std::deque<std::string> &tokens) {
+        if (tokens.empty()) {
+            std::cout << "PREMEATURE END OF INPUT" << std::endl;
+            return std::make_shared<Symbol>("#eof");
+        }
+        auto tok = tokens.front();
+        tokens.pop_front();
+
+        if (tok == "(") {
+            std::vector<std::shared_ptr<InputExpr>> items;
+            while (tokens.front() != ")")
+                items.push_back(parse_tokens(tokens));
+            tokens.pop_front();
+
+            return std::make_shared<List>(items);
+        } else if (tok.front() == '"' && tok.back() == '"') {
+            return std::make_shared<String>(tok.substr(1, tok.size() - 2));
+        } else {
+            return std::make_shared<Symbol>(tok);
+        }
+        // TODO: stray )
+    }
+
+    std::deque<std::string> tokenize(std::string input) {
+        std::deque<std::string> tokens = {};
+        std::string buf;
+        auto is_str = false;
+
+        for (const char c : input) {
+            if (is_str) {
+                buf += c;
+                if (c == '"') {
+                    is_str = false;
+                    tokens.push_back(buf);
+                    buf = "";
+                }
+            } else {
+                if (c == '(' || c == ')' || c == ' ') {
+                    if (!buf.empty())
+                        tokens.push_back(buf);
+                    buf = "";
+                }
+
+                if (c == '(')
+                    tokens.push_back("(");
+                else if (c == ')')
+                    tokens.push_back(")");
+                else if (c == '"') {
+                    buf += c;
+                    is_str = true;
+                } else if (c != ' ')
+                    buf += c;
+            }
+        }
+        if (!buf.empty())
+            tokens.push_back(buf);
+        return tokens;
+    }
+};
+
+class CommandError : public std::exception {
+    public:
+    CommandError(std::string message) : message(message) {};
+    virtual const char* what() const throw()
+    {
+        return message.c_str();
+    }
+
+    private:
+    std::string message;
+};
+
+class Printer : public IInterpreter {
+    public:
+    virtual void interpret(const InputExpr &e) { 
+        e.visit(*this);
+    };
+    virtual void interpret(const List &e) {
+        std::cout << "BEGIN LIST" << std::endl;
+        for (const auto& item : e.items)
+            interpret(*item);
+        std::cout << "END LIST" << std::endl;
+    };
+    virtual void interpret(const Symbol &e) {
+        std::cout << "SYMBOL " << e.label << std::endl;
+    };
+    virtual void interpret(const String &e) {
+        std::cout << "STRING " << e.str << std::endl;
+    };
+};
+
+class Interpreter : public IInterpreter {
+    public:
+    Interpreter(DB &db) : db(db) {}
+
+    virtual void interpret(const InputExpr &e) { 
+        auto root = getList(e);
+        const auto &command = getSymbol(*root.front());
+        const int arity = root.size() - 1;
+        if (command == "exit" && arity == 0) {
+            exit(root);
+        } else if (command == "add" && arity == 2) {
+            add(root);
+        } else if (command == "query" && arity >= 1) {
+            query(root);
+        } else if (command == "get" && arity == 1) {
+            get(root);
+        } else {
+            std::cout << "UNKNOWN COMMAND " << command << "(" << arity << ")" << std::endl;
+        }
+    };
+    virtual void interpret(const List &e) { };
+    virtual void interpret(const Symbol &e) { };
+    virtual void interpret(const String &e) { };
+
+    private:
+    void exit(const std::vector<std::shared_ptr<InputExpr>> &args) {
+        ::exit(0);
+    }
+
+    void add(const std::vector<std::shared_ptr<InputExpr>> &args) {
+        auto id = getString(*args[1]),
+             content = getString(*args[2]);
+        auto entity = std::make_shared<Entity>(id, content);
+        try {
+            db.add(entity);
+        } catch (EntityExists &e) {
+            throw CommandError("Entity exists");
+        }
+    }
+
+    void query(const std::vector<std::shared_ptr<InputExpr>> &args) {
+        auto i = args.begin() + 1;
+        std::shared_ptr<Query> q = std::make_shared<Term>(getString(**i));
+        while (++i != args.end()) {
+            auto term = std::make_shared<Term>(getString(**i));
+            q = std::make_shared<And>(term, q);
+        }
+        
+        auto r = db.query(*q);
+        for (auto &e: r)
+            std::cout << e->id << std::endl;
+
+    }
+
+    void get(const std::vector<std::shared_ptr<InputExpr>> &args) {
+        auto eptr = db.get(getString(*args[1]));
+        if (eptr)
+            std::cout << eptr->content << std::endl;
+    }
+
+    std::vector<std::shared_ptr<InputExpr>> getList(const InputExpr& e) {
+        try {
+            return dynamic_cast<const List&>(e).items;
+        } catch (std::bad_cast) {
+            throw CommandError("Expected a list");
+        }
+    }
+
+    std::string getSymbol(const InputExpr& e) {
+        try {
+            return dynamic_cast<const Symbol&>(e).label;
+        } catch (std::bad_cast) {
+            throw CommandError("Expected a symbol");
+        }
+    }
+
+    std::string getString(const InputExpr& e) {
+        try {
+            return dynamic_cast<const String&>(e).str;
+        } catch (std::bad_cast) {
+            throw CommandError("Expected a string");
+        }
+    }
+
+    DB &db;
 };
 
 
 int main(int argc, char** argv) {
-    if (argc < 2) {
-        std::cout << "missing search term" << std::endl;
-        return 1;
-    }
-
-    ++argv;
-    std::shared_ptr<Query> q = std::make_shared<Term>(*argv);
-    while (*++argv) {
-        auto term = std::make_shared<Term>(*argv);
-        q = std::make_shared<And>(term, q);
-    }
-
     DB db;
-    auto findThis1 = std::make_shared<Entity>("foo", "the quick brown fox jumps over the lazy dog");
-    db.add(findThis1);
-    auto findThis2 = std::make_shared<Entity>("bar", "the quick dog barks");
-    db.add(findThis2);
+    Parser p;
+    Interpreter i(db);
 
-    auto r = db.query(*q);
-    for (auto &e: r)
-        std::cout << e->id << std::endl;
+    std::string input;
+    while (std::cin.good()) {
+        std::cout << "ii> ";
+        std::getline(std::cin, input);
+        if (input.empty())
+            continue;
+        //Printer pr;
+        //pr.interpret(*p.parse(input));
+        try {
+            i.interpret(*p.parse(input));
+        } catch (CommandError &e) {
+            std::cout << "COMMAND ERROR " << e.what() << std::endl;
+        }
+    }
 
     return 0;
 }
