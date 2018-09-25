@@ -9,12 +9,15 @@
 #include <forward_list>
 #include <deque>
 
+using namespace std;
+
+
 class Entity {
 public:
-    std::string id;
-    std::string content;
+    string id;
+    string content;
 
-    Entity(const std::string &id, const std::string &content)
+    Entity(const string &id, const string &content)
         : id(id), content(content)
     {}
 
@@ -32,48 +35,48 @@ class Term;
 class And;
 class IDB {
     public:
-    virtual std::forward_list<std::shared_ptr<Entity>> query(const Term &q) = 0;
-    virtual std::forward_list<std::shared_ptr<Entity>> query(const And &q) = 0;
-    virtual std::forward_list<std::shared_ptr<Entity>> query(const Query &q) = 0;
+    virtual forward_list<shared_ptr<Entity>> query(const Term &q) = 0;
+    virtual forward_list<shared_ptr<Entity>> query(const And &q) = 0;
+    virtual forward_list<shared_ptr<Entity>> query(const Query &q) = 0;
 };
 
 class Query {
 public:
-    virtual std::forward_list<std::shared_ptr<Entity>> visit(IDB &db) const = 0;
+    virtual forward_list<shared_ptr<Entity>> visit(IDB &db) const = 0;
 };
 
 class Term : public Query {
     public:
-    std::string t;
-    Term(const std::string &t) : t(t) {}
-    std::forward_list<std::shared_ptr<Entity>> visit(IDB &db) const override {
+    string t;
+    Term(const string &t) : t(t) {}
+    forward_list<shared_ptr<Entity>> visit(IDB &db) const override {
         return db.query(*this);
     }
 };
 
 class And : public Query {
     public:
-    std::shared_ptr<Query> l;
-    std::shared_ptr<Query> r;
-    And(std::shared_ptr<Query> l, std::shared_ptr<Query> r) : l(l), r(r) {}
-    std::forward_list<std::shared_ptr<Entity>> visit(IDB &db) const override {
+    shared_ptr<Query> l;
+    shared_ptr<Query> r;
+    And(shared_ptr<Query> l, shared_ptr<Query> r) : l(l), r(r) {}
+    forward_list<shared_ptr<Entity>> visit(IDB &db) const override {
         return db.query(*this);
     }
 };
 
-class EntityExists : public std::exception {};
+class EntityExists : public exception {};
 
 class DB : public IDB {
     public:
-    std::forward_list<std::shared_ptr<Entity>> query(const Term &q) override {
+    forward_list<shared_ptr<Entity>> query(const Term &q) override {
         return inverted_index[q.t];
     }
 
-    std::forward_list<std::shared_ptr<Entity>> query(const And &q) override {
+    forward_list<shared_ptr<Entity>> query(const And &q) override {
         auto l = this->query(*q.l),
              r = this->query(*q.r);
 
-        std::forward_list<std::shared_ptr<Entity>> result;
+        forward_list<shared_ptr<Entity>> result;
         auto lb = l.begin(), le = l.end(), rb = r.begin(), re = r.end();
         while (lb!=le && rb!=re)
         {
@@ -90,19 +93,18 @@ class DB : public IDB {
         return result;
     }
 
-    std::forward_list<std::shared_ptr<Entity>> query(const Query &q) override {
+    forward_list<shared_ptr<Entity>> query(const Query &q) override {
         return q.visit(*this);
     }
 
-    std::shared_ptr<Entity> get(const std::string &id) {
+    shared_ptr<Entity> get(const string &id) {
         return forward_index[id];
     }
 
-    void add(std::shared_ptr<Entity> &e) {
+    void add(shared_ptr<Entity> &e) {
         if (forward_index[e->id])
             throw EntityExists();
 
-        using namespace std;
         istringstream iss(e->content);
         vector<string> tokens{istream_iterator<string>{iss},
                               istream_iterator<string>{}};
@@ -117,8 +119,8 @@ class DB : public IDB {
     }
 
     private:
-    std::unordered_map<std::string, std::forward_list<std::shared_ptr<Entity>>> inverted_index;
-    std::unordered_map<std::string, std::shared_ptr<Entity>> forward_index;
+    unordered_map<string, forward_list<shared_ptr<Entity>>> inverted_index;
+    unordered_map<string, shared_ptr<Entity>> forward_index;
 };
 
 
@@ -140,60 +142,60 @@ class InputExpr {
 };
 class Symbol : public InputExpr {
     public:
-    Symbol(std::string label) : label(label) {};
+    Symbol(string label) : label(label) {};
     virtual void visit(IInterpreter &i) const override { i.interpret(*this); };
 
-    std::string label;
+    string label;
 };
 class String : public InputExpr {
     public:
-    String(std::string str) : str(str) {};
+    String(string str) : str(str) {};
     virtual void visit(IInterpreter &i) const override { i.interpret(*this); };
 
-    std::string str;
+    string str;
 };
 class List : public InputExpr {
     public:
-    List(std::vector<std::shared_ptr<InputExpr>> items) : items(items) {};
+    List(vector<shared_ptr<InputExpr>> items) : items(items) {};
     virtual void visit(IInterpreter &i) const override { i.interpret(*this); };
 
-    std::vector<std::shared_ptr<InputExpr>> items;
+    vector<shared_ptr<InputExpr>> items;
 };
 
 class Parser {
     public:
-    std::shared_ptr<InputExpr> parse(std::string input) {
+    shared_ptr<InputExpr> parse(string input) {
         auto tokens = tokenize(input);
         return parse_tokens(tokens);
     };
 
     private:
-    std::shared_ptr<InputExpr> parse_tokens(std::deque<std::string> &tokens) {
+    shared_ptr<InputExpr> parse_tokens(deque<string> &tokens) {
         if (tokens.empty()) {
-            std::cout << "PREMEATURE END OF INPUT" << std::endl;
-            return std::make_shared<Symbol>("#eof");
+            cout << "PREMEATURE END OF INPUT" << endl;
+            return make_shared<Symbol>("#eof");
         }
         auto tok = tokens.front();
         tokens.pop_front();
 
         if (tok == "(") {
-            std::vector<std::shared_ptr<InputExpr>> items;
+            vector<shared_ptr<InputExpr>> items;
             while (tokens.front() != ")")
                 items.push_back(parse_tokens(tokens));
             tokens.pop_front();
 
-            return std::make_shared<List>(items);
+            return make_shared<List>(items);
         } else if (tok.front() == '"' && tok.back() == '"') {
-            return std::make_shared<String>(tok.substr(1, tok.size() - 2));
+            return make_shared<String>(tok.substr(1, tok.size() - 2));
         } else {
-            return std::make_shared<Symbol>(tok);
+            return make_shared<Symbol>(tok);
         }
         // TODO: stray )
     }
 
-    std::deque<std::string> tokenize(std::string input) {
-        std::deque<std::string> tokens = {};
-        std::string buf;
+    deque<string> tokenize(string input) {
+        deque<string> tokens = {};
+        string buf;
         auto is_str = false;
 
         for (const char c : input) {
@@ -228,16 +230,16 @@ class Parser {
     }
 };
 
-class CommandError : public std::exception {
+class CommandError : public exception {
     public:
-    CommandError(std::string message) : message(message) {};
+    CommandError(string message) : message(message) {};
     virtual const char* what() const throw()
     {
         return message.c_str();
     }
 
     private:
-    std::string message;
+    string message;
 };
 
 class Printer : public IInterpreter {
@@ -246,16 +248,16 @@ class Printer : public IInterpreter {
         e.visit(*this);
     };
     virtual void interpret(const List &e) {
-        std::cout << "BEGIN LIST" << std::endl;
+        cout << "BEGIN LIST" << endl;
         for (const auto& item : e.items)
             interpret(*item);
-        std::cout << "END LIST" << std::endl;
+        cout << "END LIST" << endl;
     };
     virtual void interpret(const Symbol &e) {
-        std::cout << "SYMBOL " << e.label << std::endl;
+        cout << "SYMBOL " << e.label << endl;
     };
     virtual void interpret(const String &e) {
-        std::cout << "STRING " << e.str << std::endl;
+        cout << "STRING " << e.str << endl;
     };
 };
 
@@ -276,7 +278,7 @@ class Interpreter : public IInterpreter {
         } else if (command == "get" && arity == 1) {
             get(root);
         } else {
-            std::cout << "UNKNOWN COMMAND " << command << "(" << arity << ")" << std::endl;
+            cout << "UNKNOWN COMMAND " << command << "(" << arity << ")" << endl;
         }
     };
     virtual void interpret(const List &e) { };
@@ -284,14 +286,14 @@ class Interpreter : public IInterpreter {
     virtual void interpret(const String &e) { };
 
     private:
-    void exit(const std::vector<std::shared_ptr<InputExpr>> &args) {
+    void exit(const vector<shared_ptr<InputExpr>> &args) {
         ::exit(0);
     }
 
-    void add(const std::vector<std::shared_ptr<InputExpr>> &args) {
+    void add(const vector<shared_ptr<InputExpr>> &args) {
         auto id = getString(*args[1]),
              content = getString(*args[2]);
-        auto entity = std::make_shared<Entity>(id, content);
+        auto entity = make_shared<Entity>(id, content);
         try {
             db.add(entity);
         } catch (EntityExists &e) {
@@ -299,46 +301,46 @@ class Interpreter : public IInterpreter {
         }
     }
 
-    void query(const std::vector<std::shared_ptr<InputExpr>> &args) {
+    void query(const vector<shared_ptr<InputExpr>> &args) {
         auto i = args.begin() + 1;
-        std::shared_ptr<Query> q = std::make_shared<Term>(getString(**i));
+        shared_ptr<Query> q = make_shared<Term>(getString(**i));
         while (++i != args.end()) {
-            auto term = std::make_shared<Term>(getString(**i));
-            q = std::make_shared<And>(term, q);
+            auto term = make_shared<Term>(getString(**i));
+            q = make_shared<And>(term, q);
         }
         
         auto r = db.query(*q);
         for (auto &e: r)
-            std::cout << e->id << std::endl;
+            cout << e->id << endl;
 
     }
 
-    void get(const std::vector<std::shared_ptr<InputExpr>> &args) {
+    void get(const vector<shared_ptr<InputExpr>> &args) {
         auto eptr = db.get(getString(*args[1]));
         if (eptr)
-            std::cout << eptr->content << std::endl;
+            cout << eptr->content << endl;
     }
 
-    std::vector<std::shared_ptr<InputExpr>> getList(const InputExpr& e) {
+    vector<shared_ptr<InputExpr>> getList(const InputExpr& e) {
         try {
             return dynamic_cast<const List&>(e).items;
-        } catch (std::bad_cast) {
+        } catch (bad_cast) {
             throw CommandError("Expected a list");
         }
     }
 
-    std::string getSymbol(const InputExpr& e) {
+    string getSymbol(const InputExpr& e) {
         try {
             return dynamic_cast<const Symbol&>(e).label;
-        } catch (std::bad_cast) {
+        } catch (bad_cast) {
             throw CommandError("Expected a symbol");
         }
     }
 
-    std::string getString(const InputExpr& e) {
+    string getString(const InputExpr& e) {
         try {
             return dynamic_cast<const String&>(e).str;
-        } catch (std::bad_cast) {
+        } catch (bad_cast) {
             throw CommandError("Expected a string");
         }
     }
@@ -352,10 +354,10 @@ int main(int argc, char** argv) {
     Parser p;
     Interpreter i(db);
 
-    std::string input;
-    while (std::cin.good()) {
-        std::cout << "ii> ";
-        std::getline(std::cin, input);
+    string input;
+    while (cin.good()) {
+        cout << "ii> ";
+        getline(cin, input);
         if (input.empty())
             continue;
         //Printer pr;
@@ -363,7 +365,7 @@ int main(int argc, char** argv) {
         try {
             i.interpret(*p.parse(input));
         } catch (CommandError &e) {
-            std::cout << "COMMAND ERROR " << e.what() << std::endl;
+            cout << "COMMAND ERROR " << e.what() << endl;
         }
     }
 
