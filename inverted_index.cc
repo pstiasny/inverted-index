@@ -8,6 +8,8 @@
 #include <vector>
 #include <forward_list>
 #include <deque>
+#include <fstream>
+#include <stdio.h>
 
 using namespace std;
 
@@ -48,6 +50,9 @@ class CommandError : public Error {
 class ParseError : public Error {
     using Error::Error;
 };
+class IOError : public Error {
+    using Error::Error;
+};
 
 class Query;
 class Term;
@@ -83,10 +88,143 @@ class And : public Query {
     }
 };
 
+typedef unordered_map<string, forward_list<shared_ptr<Entity>>> InvertedIndex;
+typedef unordered_map<string, shared_ptr<Entity>> ForwardIndex;
+
+struct AddOp {
+    int seqid;
+    shared_ptr<Entity> e;
+
+    void operate(InvertedIndex &ii, ForwardIndex &fi) {
+        addEntityToForwardIndex(fi, e);
+        addEntityToInvertedIndex(ii, e);
+    }
+
+    private:
+    void addEntityToInvertedIndex(InvertedIndex &ii, const shared_ptr<Entity> &e) {
+        istringstream iss(e->content);
+        vector<string> tokens{istream_iterator<string>{iss},
+                              istream_iterator<string>{}};
+        for (auto it = begin(tokens); it != end(tokens); ++it) {
+            forward_list<shared_ptr<Entity>> ins = {e};
+            auto &bucket = ii[*it];
+            bucket.merge(ins);
+            bucket.unique();
+        }
+    }
+
+    void addEntityToForwardIndex(ForwardIndex &fi, const shared_ptr<Entity> &e) {
+        fi[e->id] = e;
+    }
+};
+
+class Log {
+    public:
+    Log(string path) {
+        file = fopen(path.c_str(), "a+");
+        if (!file)
+            throw IOError(string("could not open log: ") + strerror(errno));
+        if (0 != fseek(file, 0, SEEK_SET))
+            throw IOError(string("could not seek in log: ") + strerror(errno));
+    }
+
+    ~Log() {
+        fclose(file);
+    }
+
+    void writeOp(const AddOp &o) {
+        assert(o.seqid > last_seqid);
+
+        if (0 != fseek(file, 0, SEEK_END))
+            throw IOError(string("could not seek in log: ") + strerror(errno));
+
+        int id_size = o.e->id.size()
+          , content_size =o.e->content.size();
+        lwrite(&o.seqid, sizeof(o.seqid), 1);
+        lwrite(&id_size, sizeof(id_size), 1);
+        lwrite(&content_size, sizeof(content_size), 1);
+        lwrite(o.e->id.c_str(), o.e->id.size(), 1);
+        lwrite(o.e->content.c_str(), o.e->content.size(), 1);
+        lflush();
+
+        last_seqid = o.seqid;
+    }
+
+    shared_ptr<AddOp> readOp() {
+        auto op = make_shared<AddOp>();
+
+        int r;
+        int seqid, id_size, content_size;
+        if (!ltry_read(&(op->seqid), sizeof(seqid), 1))
+            return nullptr;
+        lread(&id_size, sizeof(id_size), 1);
+        lread(&content_size, sizeof(content_size), 1);
+
+        assert(op->seqid > last_seqid);
+        last_seqid = op->seqid;
+
+        char id[id_size], content[content_size];
+        lread(id, sizeof(char), id_size);
+        lread(content, sizeof(char), content_size);
+        op->e = make_shared<Entity>(string(id, id_size), string(content, content_size));
+
+        return op;
+    }
+
+    void close() {
+        fclose(file);
+    }
+
+    int getNextSeqid() {
+        return last_seqid + 1;
+    }
+
+    private:
+    int last_seqid = 0;
+    FILE *file;
+
+    void lread(void *ptr, size_t size, size_t n) {
+        if (n != fread(ptr, size, n, file)) {
+            if (feof(file)) {
+                throw IOError("unexepected end of log");
+            } else {
+                throw IOError("error when reading log");
+            }
+        }
+    }
+
+    bool ltry_read(void *ptr, size_t size, size_t n) {
+        if (n != fread(ptr, size, n, file)) {
+            if (feof(file)) {
+                return false;
+            } else {
+                throw IOError("error when reading log");
+            }
+        }
+        return true;
+    }
+
+    void lwrite(const void *ptr, size_t size, size_t nitems) {
+        if (nitems != fwrite(ptr, size, nitems, file))
+            throw IOError("could not write to log");
+    }
+
+    void lflush() {
+        fflush(file);
+    }
+};
+
 class EntityExists : public exception {};
 
 class DB : public IDB {
     public:
+    DB() : log("log") {
+        shared_ptr<AddOp> op;
+        while ((op = log.readOp())) {
+            op->operate(inverted_index, forward_index);
+        }
+    }
+
     forward_list<shared_ptr<Entity>> query(const Term &q) override {
         return inverted_index[q.t];
     }
@@ -120,26 +258,23 @@ class DB : public IDB {
         return forward_index[id];
     }
 
-    void add(shared_ptr<Entity> &e) {
+    void add(const shared_ptr<Entity> &e) {
         if (forward_index[e->id])
             throw EntityExists();
 
-        istringstream iss(e->content);
-        vector<string> tokens{istream_iterator<string>{iss},
-                              istream_iterator<string>{}};
-        for (auto it = begin(tokens); it != end(tokens); ++it) {
-            forward_list<shared_ptr<Entity>> ins = {e};
-            auto &bucket = inverted_index[*it];
-            bucket.merge(ins);
-            bucket.unique();
-        }
+        AddOp add_op {log.getNextSeqid(), e};
+        log.writeOp(add_op);
+        add_op.operate(inverted_index, forward_index);
+    }
 
-        forward_index[e->id] = e;
+    void close() {
+        log.close();
     }
 
     private:
-    unordered_map<string, forward_list<shared_ptr<Entity>>> inverted_index;
-    unordered_map<string, shared_ptr<Entity>> forward_index;
+    InvertedIndex inverted_index;
+    ForwardIndex forward_index;
+    Log log;
 };
 
 
@@ -291,6 +426,7 @@ class Interpreter : public IInterpreter {
 
     private:
     void exit(const vector<shared_ptr<InputExpr>> &args) {
+        db.close();
         ::exit(0);
     }
 
