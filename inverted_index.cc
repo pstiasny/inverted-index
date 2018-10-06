@@ -30,6 +30,25 @@ public:
     }
 };
 
+class Error : public exception {
+    public:
+    Error(string message) : message(message) {};
+    virtual const char* what() const throw()
+    {
+        return message.c_str();
+    }
+
+    private:
+    string message;
+};
+
+class CommandError : public Error {
+    using Error::Error;
+};
+class ParseError : public Error {
+    using Error::Error;
+};
+
 class Query;
 class Term;
 class And;
@@ -171,10 +190,8 @@ class Parser {
 
     private:
     shared_ptr<InputExpr> parse_tokens(deque<string> &tokens) {
-        if (tokens.empty()) {
-            cout << "PREMEATURE END OF INPUT" << endl;
-            return make_shared<Symbol>("#eof");
-        }
+        if (tokens.empty())
+            throw ParseError("Premature end of intput");
         auto tok = tokens.front();
         tokens.pop_front();
 
@@ -190,7 +207,6 @@ class Parser {
         } else {
             return make_shared<Symbol>(tok);
         }
-        // TODO: stray )
     }
 
     deque<string> tokenize(string input) {
@@ -230,18 +246,6 @@ class Parser {
     }
 };
 
-class CommandError : public exception {
-    public:
-    CommandError(string message) : message(message) {};
-    virtual const char* what() const throw()
-    {
-        return message.c_str();
-    }
-
-    private:
-    string message;
-};
-
 class Printer : public IInterpreter {
     public:
     virtual void interpret(const InputExpr &e) { 
@@ -278,7 +282,7 @@ class Interpreter : public IInterpreter {
         } else if (command == "get" && arity == 1) {
             get(root);
         } else {
-            cout << "UNKNOWN COMMAND " << command << "(" << arity << ")" << endl;
+            throw CommandError("Unknown command: " + command + "(" + to_string(arity) + ")");
         }
     };
     virtual void interpret(const List &e) { };
@@ -364,6 +368,8 @@ int main(int argc, char** argv) {
         //pr.interpret(*p.parse(input));
         try {
             i.interpret(*p.parse(input));
+        } catch (ParseError &e) {
+            cout << "PARSE ERROR " << e.what() << endl;
         } catch (CommandError &e) {
             cout << "COMMAND ERROR " << e.what() << endl;
         }
