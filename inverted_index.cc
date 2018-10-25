@@ -218,7 +218,7 @@ class EntityExists : public exception {};
 
 class DB : public IDB {
     public:
-    DB() : log("log") {
+    DB(string log_path) : log(log_path) {
         shared_ptr<AddOp> op;
         while ((op = log.readOp())) {
             op->operate(inverted_index, forward_index);
@@ -448,7 +448,7 @@ class Interpreter : public IInterpreter {
             auto term = make_shared<Term>(getString(**i));
             q = make_shared<And>(term, q);
         }
-        
+
         auto r = db.query(*q);
         for (auto &e: r)
             cout << e->id << endl;
@@ -487,29 +487,3 @@ class Interpreter : public IInterpreter {
 
     DB &db;
 };
-
-
-int main(int argc, char** argv) {
-    DB db;
-    Parser p;
-    Interpreter i(db);
-
-    string input;
-    while (cin.good()) {
-        cout << "ii> ";
-        getline(cin, input);
-        if (input.empty())
-            continue;
-        //Printer pr;
-        //pr.interpret(*p.parse(input));
-        try {
-            i.interpret(*p.parse(input));
-        } catch (ParseError &e) {
-            cout << "PARSE ERROR " << e.what() << endl;
-        } catch (CommandError &e) {
-            cout << "COMMAND ERROR " << e.what() << endl;
-        }
-    }
-
-    return 0;
-}
