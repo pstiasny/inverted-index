@@ -404,8 +404,11 @@ class Interpreter : public IInterpreter {
     public:
     Interpreter(DB &db) : db(db) {}
 
-    virtual void interpret(const InputExpr &e) { 
+    virtual void interpret(const InputExpr &e) {
         auto root = getList(e);
+        if (root.empty())
+            throw CommandError("Expected a command, got empty list");
+
         const auto &command = getSymbol(*root.front());
         const int arity = root.size() - 1;
         if (command == "exit" && arity == 0) {
