@@ -32,11 +32,14 @@ public:
     }
 };
 
+ostream& operator<<(ostream &os, Entity const &e) {
+    return os << "<Entity \"" << e.id << "\">";
+}
+
 class Error : public exception {
     public:
     Error(string message) : message(message) {};
-    virtual const char* what() const throw()
-    {
+    virtual const char* what() const throw() {
         return message.c_str();
     }
 
@@ -102,13 +105,19 @@ struct AddOp {
 
     private:
     void addEntityToInvertedIndex(InvertedIndex &ii, const shared_ptr<Entity> &e) {
+        // The insert algorithm is obviously terribly inefficient.
         istringstream iss(e->content);
         vector<string> tokens{istream_iterator<string>{iss},
                               istream_iterator<string>{}};
         for (auto it = begin(tokens); it != end(tokens); ++it) {
             forward_list<shared_ptr<Entity>> ins = {e};
             auto &bucket = ii[*it];
-            bucket.merge(ins);
+            // Note that we need a comparison function to compare on entity IDs, not shared_pointers.
+            bucket.merge(
+                ins,
+                [](const shared_ptr<Entity> &x, const shared_ptr<Entity> &y) {
+                    return x->id < y->id;
+                });
             bucket.unique();
         }
     }
@@ -129,7 +138,7 @@ class Log {
     }
 
     ~Log() {
-        fclose(file);
+        close();
     }
 
     void writeOp(const AddOp &o) {
@@ -223,6 +232,10 @@ class DB : public IDB {
         while ((op = log.readOp())) {
             op->operate(inverted_index, forward_index);
         }
+    }
+
+    ~DB() {
+        close();
     }
 
     forward_list<shared_ptr<Entity>> query(const Term &q) override {
@@ -402,7 +415,7 @@ class Printer : public IInterpreter {
 
 class Interpreter : public IInterpreter {
     public:
-    Interpreter(DB &db) : db(db) {}
+    Interpreter(DB &db, ostream &out) : db(db), iout(out) {}
 
     virtual void interpret(const InputExpr &e) {
         auto root = getList(e);
@@ -454,14 +467,13 @@ class Interpreter : public IInterpreter {
 
         auto r = db.query(*q);
         for (auto &e: r)
-            cout << e->id << endl;
-
+            iout << e->id << endl;
     }
 
     void get(const vector<shared_ptr<InputExpr>> &args) {
         auto eptr = db.get(getString(*args[1]));
         if (eptr)
-            cout << eptr->content << endl;
+            iout << eptr->content << endl;
     }
 
     vector<shared_ptr<InputExpr>> getList(const InputExpr& e) {
@@ -489,4 +501,5 @@ class Interpreter : public IInterpreter {
     }
 
     DB &db;
+    ostream &iout;
 };

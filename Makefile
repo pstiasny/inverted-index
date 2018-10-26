@@ -7,8 +7,8 @@ inverted_index: inverted_index.cc main.cc
 test: test_inverted_index
 	./test_inverted_index
 
-test_inverted_index: test_inverted_index.cc libgtest.a
-	clang++ --std=c++11 -o test_inverted_index -pthread -isystem ${GTEST_DIR}/include libgtest.a test_inverted_index.cc
+test_inverted_index: test_inverted_index.cc inverted_index.cc libgtest.a
+	clang++ -g --std=c++11 -o test_inverted_index -pthread -isystem ${GTEST_DIR}/include libgtest.a test_inverted_index.cc
 
 libgtest.a:
 	clang++ --std=c++11 \
@@ -19,4 +19,4 @@ libgtest.a:
 	ar -rv libgtest.a gtest-all.o
 
 clean:
-	rm -f inverted_index *.a *.o
+	rm -f inverted_index *.a *.o test_inverted_index

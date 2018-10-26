@@ -4,7 +4,7 @@
 int main(int argc, char** argv) {
     DB db("log");
     Parser p;
-    Interpreter i(db);
+    Interpreter i(db, cout);
 
     string input;
     while (cin.good()) {
