@@ -1,4 +1,4 @@
-#include "inverted_index.cc"
+#include "inverted_index.h"
 
 
 int main(int argc, char** argv) {
