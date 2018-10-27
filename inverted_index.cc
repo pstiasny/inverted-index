@@ -153,13 +153,13 @@ forward_list<shared_ptr<Entity>> DB::query(const And &q) {
     auto lb = l.begin(), le = l.end(), rb = r.begin(), re = r.end();
     while (lb!=le && rb!=re)
     {
-        if (*lb<*rb) ++lb;
-        else if (*rb<*lb) ++rb;
+        auto &lid = (*lb)->id, &rid = (*rb)->id;
+        if (lid<rid) ++lb;
+        else if (rid<lid) ++rb;
         else {
-            auto &both = *lb;
-            result.push_front(both);
-            while (lb != le && *lb == both) ++lb;
-            while (rb != re && *rb == both) ++rb;
+            result.push_front(*lb);
+            ++lb;
+            ++rb;
         }
     }
     result.reverse();
