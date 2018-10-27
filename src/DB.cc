@@ -12,32 +12,18 @@ DB::~DB() {
     close();
 }
 
-forward_list<shared_ptr<Entity>> DB::query(const Term &q) {
+PostingList DB::query(const Term &q) {
     return inverted_index[q.t];
 }
 
-forward_list<shared_ptr<Entity>> DB::query(const And &q) {
+PostingList DB::query(const And &q) {
     auto l = this->query(*q.l),
          r = this->query(*q.r);
 
-    forward_list<shared_ptr<Entity>> result;
-    auto lb = l.begin(), le = l.end(), rb = r.begin(), re = r.end();
-    while (lb!=le && rb!=re)
-    {
-        auto &lid = (*lb)->id, &rid = (*rb)->id;
-        if (lid<rid) ++lb;
-        else if (rid<lid) ++rb;
-        else {
-            result.push_front(*lb);
-            ++lb;
-            ++rb;
-        }
-    }
-    result.reverse();
-    return result;
+    return l.intersect(r);
 }
 
-forward_list<shared_ptr<Entity>> DB::query(const Query &q) {
+PostingList DB::query(const Query &q) {
     return q.visit(*this);
 }
 

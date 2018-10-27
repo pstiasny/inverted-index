@@ -1,5 +1,5 @@
 CXX = clang++
-CXX_FLAGS = --std=c++11 -Iinclude
+CXX_FLAGS = --std=c++11
 GTEST_DIR = "vendor/googletest/googletest"
 SOURCES = $(shell find src -name '*.cc')
 OBJECTS = $(SOURCES:src/%.cc=%.o)
@@ -8,13 +8,11 @@ OBJECTS = $(SOURCES:src/%.cc=%.o)
 inverted_index: $(OBJECTS) main.cc
 	clang++ --std=c++11 -Iinclude main.cc $(OBJECTS) -o inverted_index
 
-inverted_index.o: src/*.cc include/inverted_index.h
-
 test: test_inverted_index
 	./test_inverted_index
 
 test_inverted_index: tests/test_inverted_index.cc $(OBJECTS) include/inverted_index.h libgtest.a
-	clang++ -g --std=c++11 -o test_inverted_index \
+	$(CXX) $(CXX_FLAGS) -g -o test_inverted_index \
 		-pthread \
 		-isystem ${GTEST_DIR}/include \
 		-Iinclude \
@@ -32,5 +30,5 @@ clean:
 	rm -f inverted_index test_inverted_index *.a *.o
 
 
-%.o: src/%.cc
+%.o: src/%.cc include/inverted_index.h
 	$(CXX) $(CXX_FLAGS) -Iinclude -c $< -o $@

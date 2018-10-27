@@ -27,6 +27,24 @@ public:
     bool operator==(const Entity &r);
 };
 
+ostream& operator<<(ostream &os, Entity const &e);
+
+
+class PostingList {
+public:
+    PostingList() {};
+    PostingList(const forward_list<shared_ptr<Entity>> &lst) : lst(lst) {};
+
+    void add(shared_ptr<Entity> e);
+    PostingList intersect(PostingList other);
+
+    bool operator==(const PostingList &r) const;
+
+    forward_list<shared_ptr<Entity>> lst;
+};
+
+ostream& operator<<(ostream &os, PostingList const &pl);
+
 
 class Error : public exception {
     public:
@@ -54,21 +72,21 @@ class Term;
 class And;
 class IDB {
     public:
-    virtual forward_list<shared_ptr<Entity>> query(const Term &q) = 0;
-    virtual forward_list<shared_ptr<Entity>> query(const And &q) = 0;
-    virtual forward_list<shared_ptr<Entity>> query(const Query &q) = 0;
+    virtual PostingList query(const Term &q) = 0;
+    virtual PostingList query(const And &q) = 0;
+    virtual PostingList query(const Query &q) = 0;
 };
 
 class Query {
 public:
-    virtual forward_list<shared_ptr<Entity>> visit(IDB &db) const = 0;
+    virtual PostingList visit(IDB &db) const = 0;
 };
 
 class Term : public Query {
     public:
     string t;
     Term(const string &t) : t(t) {}
-    forward_list<shared_ptr<Entity>> visit(IDB &db) const override {
+    PostingList visit(IDB &db) const override {
         return db.query(*this);
     }
 };
@@ -78,12 +96,12 @@ class And : public Query {
     shared_ptr<Query> l;
     shared_ptr<Query> r;
     And(shared_ptr<Query> l, shared_ptr<Query> r) : l(l), r(r) {}
-    forward_list<shared_ptr<Entity>> visit(IDB &db) const override {
+    PostingList visit(IDB &db) const override {
         return db.query(*this);
     }
 };
 
-typedef unordered_map<string, forward_list<shared_ptr<Entity>>> InvertedIndex;
+typedef unordered_map<string, PostingList> InvertedIndex;
 typedef unordered_map<string, shared_ptr<Entity>> ForwardIndex;
 
 struct AddOp {
@@ -124,9 +142,9 @@ class DB : public IDB {
     DB(string log_path);
     ~DB();
 
-    forward_list<shared_ptr<Entity>> query(const Term &q) override;
-    forward_list<shared_ptr<Entity>> query(const And &q) override;
-    forward_list<shared_ptr<Entity>> query(const Query &q) override;
+    PostingList query(const Term &q) override;
+    PostingList query(const And &q) override;
+    PostingList query(const Query &q) override;
     shared_ptr<Entity> get(const string &id);
     void add(const shared_ptr<Entity> &e);
     void close();

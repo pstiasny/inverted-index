@@ -59,74 +59,13 @@ TEST(TestDB, TestQuery) {
 
     shared_ptr<Query> q_xyz = make_shared<And>(q_xy, q_z);
 
-    auto result = db.query(*q_x);
-    ASSERT_FALSE(result.empty());
-    EXPECT_EQ(result.front()->id, "test_id_1");
-    result.pop_front();
-    ASSERT_FALSE(result.empty());
-    EXPECT_EQ(result.front()->id, "test_id_2");
-    result.pop_front();
-    ASSERT_FALSE(result.empty());
-    EXPECT_EQ(result.front()->id, "test_id_3");
-    result.pop_front();
-    EXPECT_TRUE(result.empty());
-
-    result = db.query(*q_y);
-    ASSERT_FALSE(result.empty());
-    EXPECT_EQ(result.front()->id, "test_id_1");
-    result.pop_front();
-    ASSERT_FALSE(result.empty());
-    EXPECT_EQ(result.front()->id, "test_id_2");
-    result.pop_front();
-    ASSERT_FALSE(result.empty());
-    EXPECT_EQ(result.front()->id, "test_id_4");
-    result.pop_front();
-    EXPECT_TRUE(result.empty());
-
-    result = db.query(*q_z);
-    ASSERT_FALSE(result.empty());
-    EXPECT_EQ(result.front()->id, "test_id_1");
-    result.pop_front();
-    ASSERT_FALSE(result.empty());
-    EXPECT_EQ(result.front()->id, "test_id_3");
-    result.pop_front();
-    ASSERT_FALSE(result.empty());
-    EXPECT_EQ(result.front()->id, "test_id_4");
-    result.pop_front();
-    EXPECT_TRUE(result.empty());
-
-    result = db.query(*q_xy);
-    ASSERT_FALSE(result.empty());
-    EXPECT_EQ(result.front()->id, "test_id_1");
-    result.pop_front();
-    ASSERT_FALSE(result.empty());
-    EXPECT_EQ(result.front()->id, "test_id_2");
-    result.pop_front();
-    EXPECT_TRUE(result.empty());
-
-    result = db.query(*q_xz);
-    ASSERT_FALSE(result.empty());
-    EXPECT_EQ(result.front()->id, "test_id_1");
-    result.pop_front();
-    ASSERT_FALSE(result.empty());
-    EXPECT_EQ(result.front()->id, "test_id_3");
-    result.pop_front();
-    EXPECT_TRUE(result.empty());
-
-    result = db.query(*q_yz);
-    ASSERT_FALSE(result.empty());
-    EXPECT_EQ(result.front()->id, "test_id_1");
-    result.pop_front();
-    ASSERT_FALSE(result.empty());
-    EXPECT_EQ(result.front()->id, "test_id_4");
-    result.pop_front();
-    EXPECT_TRUE(result.empty());
-
-    result = db.query(*q_xyz);
-    ASSERT_FALSE(result.empty());
-    EXPECT_EQ(result.front()->id, "test_id_1");
-    result.pop_front();
-    EXPECT_TRUE(result.empty());
+    EXPECT_EQ(db.query(*q_x), PostingList({e1, e2, e3}));
+    EXPECT_EQ(db.query(*q_y), PostingList({e1, e2, e4}));
+    EXPECT_EQ(db.query(*q_z), PostingList({e1, e3, e4}));
+    EXPECT_EQ(db.query(*q_xy), PostingList({e1, e2}));
+    EXPECT_EQ(db.query(*q_xz), PostingList({e1, e3}));
+    EXPECT_EQ(db.query(*q_yz), PostingList({e1, e4}));
+    EXPECT_EQ(db.query(*q_xyz), PostingList({e1}));
 }
 
 

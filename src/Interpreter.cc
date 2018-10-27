@@ -48,7 +48,7 @@ void Interpreter::query(const vector<shared_ptr<InputExpr>> &args) {
     }
 
     auto r = db.query(*q);
-    for (auto &e: r)
+    for (auto &e: r.lst)
         iout << e->id << endl;
 }
 
