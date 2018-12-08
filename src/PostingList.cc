@@ -6,11 +6,7 @@ void PostingList::add(shared_ptr<Entity> e) {
 
     forward_list<shared_ptr<Entity>> ins = {e};
     // Note that we need a comparison function to compare on entity IDs, not shared_pointers.
-    lst.merge(
-        ins,
-        [](const shared_ptr<Entity> &x, const shared_ptr<Entity> &y) {
-            return x->id < y->id;
-        });
+    lst.merge(ins, compare_entity_ptrs_by_id);
     lst.unique();
 }
 

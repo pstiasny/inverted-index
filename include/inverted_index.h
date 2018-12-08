@@ -28,7 +28,7 @@ public:
 };
 
 ostream& operator<<(ostream &os, Entity const &e);
-
+bool compare_entity_ptrs_by_id(const shared_ptr<Entity> &x, const shared_ptr<Entity> &y);
 
 class PostingList {
 public:
