@@ -2,9 +2,11 @@
 
 
 DB::DB(string log_path) : log(log_path) {
+    forward_index = open_forward_index();
+
     shared_ptr<AddOp> op;
     while ((op = log.readOp())) {
-        op->operate(inverted_index, forward_index);
+        op->operate(inverted_index, *forward_index);
     }
 }
 
@@ -28,16 +30,16 @@ PostingList DB::query(const Query &q) {
 }
 
 shared_ptr<Entity> DB::get(const string &id) {
-    return forward_index[id];
+    return forward_index->get(id);
 }
 
 void DB::add(const shared_ptr<Entity> &e) {
-    if (forward_index[e->id])
+    if (forward_index->get(e->id))
         throw EntityExists();
 
     AddOp add_op {log.getNextSeqid(), e};
     log.writeOp(add_op);
-    add_op.operate(inverted_index, forward_index);
+    add_op.operate(inverted_index, *forward_index);
 }
 
 void DB::close() {

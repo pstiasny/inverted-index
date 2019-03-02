@@ -48,8 +48,8 @@ void Interpreter::query(const vector<shared_ptr<InputExpr>> &args) {
     }
 
     auto r = db.query(*q);
-    for (auto &e: r.lst)
-        iout << e->id << endl;
+    for (auto &id: r.lst)
+        iout << id << endl;
 }
 
 void Interpreter::get(const vector<shared_ptr<InputExpr>> &args) {

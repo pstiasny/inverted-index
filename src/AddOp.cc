@@ -1,8 +1,8 @@
 #include "inverted_index.h"
 
 
-void AddOp::operate(InvertedIndex &ii, ForwardIndex &fi) {
-    addEntityToForwardIndex(fi, e);
+void AddOp::operate(InvertedIndex &ii, IForwardIndex &fi) {
+    fi.insert(e);
     addEntityToInvertedIndex(ii, e);
 }
 
@@ -14,8 +14,4 @@ void AddOp::addEntityToInvertedIndex(InvertedIndex &ii, const shared_ptr<Entity>
         auto &bucket = ii[*it];
         bucket.add(e);
     }
-}
-
-void AddOp::addEntityToForwardIndex(ForwardIndex &fi, const shared_ptr<Entity> &e) {
-    fi[e->id] = e;
 }

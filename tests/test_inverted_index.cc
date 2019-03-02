@@ -1,3 +1,4 @@
+#include <random>
 #include "gtest/gtest.h"
 #include "inverted_index.h"
 
@@ -7,12 +8,66 @@ TEST(TestDB, TestSimpleAddThenGet) {
 
     DB db("test_log");
 
+    ASSERT_EQ(db.get("nonexistent"), nullptr);
+
     auto e = make_shared<Entity>("test_id_1", "test content");
     db.add(e);
 
     auto result = db.get("test_id_1");
+    ASSERT_NE(result, nullptr);
     EXPECT_EQ(result->id, "test_id_1");
     EXPECT_EQ(result->content, "test content");
+}
+
+
+TEST(TestDB, TestLargeAddThenGet) {
+    remove("test_log");
+
+    DB db("test_log");
+
+    int i;
+    for (i = 0; i < 10000; i++) {
+        auto e = make_shared<Entity>(to_string(i), "test content " + to_string(i));
+        db.add(e);
+    }
+
+    for (i = 0; i < 10000; i++) {
+        auto result = db.get(to_string(i));
+        ASSERT_NE(result, nullptr);
+        EXPECT_EQ(result->id, to_string(i));
+        EXPECT_EQ(result->content, "test content " + to_string(i));
+    }
+
+    ASSERT_EQ(db.get("nonexistent"), nullptr);
+}
+
+
+TEST(TestDB, TestLargeAddThenGetInRandomOrder) {
+    remove("test_log");
+
+    DB db("test_log");
+
+    int i;
+    vector<int> to_add;
+    for (i = 0; i < 10000; i++) {
+        to_add.push_back(i);
+    }
+    shuffle(to_add.begin(), to_add.end(), default_random_engine(1234));
+
+    for (int j : to_add) {
+        auto e = make_shared<Entity>(to_string(j), "test content " + to_string(j));
+        db.add(e);
+    }
+
+    shuffle(to_add.begin(), to_add.end(), default_random_engine(4321));
+    for (int j : to_add) {
+        auto result = db.get(to_string(j));
+        ASSERT_NE(result, nullptr);
+        EXPECT_EQ(result->id, to_string(j));
+        EXPECT_EQ(result->content, "test content " + to_string(j));
+    }
+
+    ASSERT_EQ(db.get("nonexistent"), nullptr);
 }
 
 
@@ -29,6 +84,7 @@ TEST(TestDB, TestRestoreFromLog) {
     {
         DB db("test_log");
         auto result = db.get("test_id_1");
+        ASSERT_NE(result, nullptr);
         EXPECT_EQ(result->id, "test_id_1");
         EXPECT_EQ(result->content, "test content");
     }
@@ -59,13 +115,13 @@ TEST(TestDB, TestQuery) {
 
     shared_ptr<Query> q_xyz = make_shared<And>(q_xy, q_z);
 
-    EXPECT_EQ(db.query(*q_x), PostingList({e1, e2, e3}));
-    EXPECT_EQ(db.query(*q_y), PostingList({e1, e2, e4}));
-    EXPECT_EQ(db.query(*q_z), PostingList({e1, e3, e4}));
-    EXPECT_EQ(db.query(*q_xy), PostingList({e1, e2}));
-    EXPECT_EQ(db.query(*q_xz), PostingList({e1, e3}));
-    EXPECT_EQ(db.query(*q_yz), PostingList({e1, e4}));
-    EXPECT_EQ(db.query(*q_xyz), PostingList({e1}));
+    EXPECT_EQ(db.query(*q_x), PostingList({e1->id, e2->id, e3->id}));
+    EXPECT_EQ(db.query(*q_y), PostingList({e1->id, e2->id, e4->id}));
+    EXPECT_EQ(db.query(*q_z), PostingList({e1->id, e3->id, e4->id}));
+    EXPECT_EQ(db.query(*q_xy), PostingList({e1->id, e2->id}));
+    EXPECT_EQ(db.query(*q_xz), PostingList({e1->id, e3->id}));
+    EXPECT_EQ(db.query(*q_yz), PostingList({e1->id, e4->id}));
+    EXPECT_EQ(db.query(*q_xyz), PostingList({e1->id}));
 }
 
 

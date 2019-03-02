@@ -33,14 +33,14 @@ bool compare_entity_ptrs_by_id(const shared_ptr<Entity> &x, const shared_ptr<Ent
 class PostingList {
 public:
     PostingList() {};
-    PostingList(const forward_list<shared_ptr<Entity>> &lst) : lst(lst) {};
+    PostingList(const forward_list<string> &lst) : lst(lst) {};
 
     void add(shared_ptr<Entity> e);
     PostingList intersect(PostingList other);
 
     bool operator==(const PostingList &r) const;
 
-    forward_list<shared_ptr<Entity>> lst;
+    forward_list<string> lst;
 };
 
 ostream& operator<<(ostream &os, PostingList const &pl);
@@ -102,17 +102,25 @@ class And : public Query {
 };
 
 typedef unordered_map<string, PostingList> InvertedIndex;
-typedef unordered_map<string, shared_ptr<Entity>> ForwardIndex;
+
+
+class IForwardIndex {
+    public:
+    virtual shared_ptr<Entity> get(const string &id) = 0;
+    virtual void insert(shared_ptr<Entity> e) = 0;
+};
+
+shared_ptr<IForwardIndex> open_forward_index();
+
 
 struct AddOp {
     int seqid;
     shared_ptr<Entity> e;
 
-    void operate(InvertedIndex &ii, ForwardIndex &fi);
+    void operate(InvertedIndex &ii, IForwardIndex &fi);
 
     private:
     void addEntityToInvertedIndex(InvertedIndex &ii, const shared_ptr<Entity> &e);
-    void addEntityToForwardIndex(ForwardIndex &fi, const shared_ptr<Entity> &e);
 };
 
 class Log {
@@ -151,7 +159,7 @@ class DB : public IDB {
 
     private:
     InvertedIndex inverted_index;
-    ForwardIndex forward_index;
+    shared_ptr<IForwardIndex> forward_index;
     Log log;
 };
 

@@ -4,9 +4,9 @@
 void PostingList::add(shared_ptr<Entity> e) {
     // The insert algorithm is obviously terribly inefficient.
 
-    forward_list<shared_ptr<Entity>> ins = {e};
+    forward_list<string> ins = {e->id};
     // Note that we need a comparison function to compare on entity IDs, not shared_pointers.
-    lst.merge(ins, compare_entity_ptrs_by_id);
+    lst.merge(ins);
     lst.unique();
 }
 
@@ -18,7 +18,7 @@ PostingList PostingList::intersect(PostingList other) {
     auto lb = l.begin(), le = l.end(), rb = r.begin(), re = r.end();
     while (lb!=le && rb!=re)
     {
-        auto &lid = (*lb)->id, &rid = (*rb)->id;
+        auto &lid = *lb, &rid = *rb;
         if (lid<rid) ++lb;
         else if (rid<lid) ++rb;
         else {
@@ -38,8 +38,8 @@ bool PostingList::operator==(const PostingList &r) const {
 
 ostream& operator<<(ostream &os, PostingList const &pl) {
     os << "[";
-    for (const auto &e : pl.lst)
-        os << *e << ", ";
+    for (const auto &id : pl.lst)
+        os << id << ", ";
     os << "]";
     return os;
 }
