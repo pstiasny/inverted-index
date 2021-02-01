@@ -1,8 +1,38 @@
+#include <algorithm>
 #include "phy.h"
+#include <sys/mman.h>
+#include <sys/ioctl.h>
+#include <sys/disk.h>
+#include <fcntl.h>
 
 
-BTreeForwardIndex::BTreeForwardIndex() {
-    nodes = (char*)calloc(node_count, NODE_SIZE);
+BTreeForwardIndex::BTreeForwardIndex(const string &path, uint32_t block_size) {
+    nodes = (char*)calloc(node_count, block_size);
+    this->block_size = block_size;
+
+    fd = open(path.c_str(), O_RDWR | O_CREAT | O_TRUNC);
+    if (fd == -1) {
+        perror("open");
+        throw Error("could not open btree file");
+    }
+
+    unsigned int fsize = lseek(fd, 0, SEEK_END);
+    if (fsize == -1)
+        throw Error("Could not determine file size");
+    if (fsize < node_count * block_size)
+        ftruncate(fd, node_count * block_size);
+
+    nodes = (char*)mmap(
+        NULL,
+        std::max(fsize, node_count * block_size),
+        PROT_READ | PROT_WRITE,
+        MAP_SHARED,
+        fd,
+        0);
+    if (nodes == (char*)-1) {
+        perror("mmap");
+        throw Error("Could not add new nodes (mmap)");
+    }
 
     int i;
     for (i = 0; i < node_count; i++) {
@@ -13,16 +43,40 @@ BTreeForwardIndex::BTreeForwardIndex() {
 
 
 BTreeForwardIndex::~BTreeForwardIndex() {
-    free(nodes);
+    munmap(nodes, node_count * block_size);
+    close(fd);
 }
 
 
 void BTreeForwardIndex::allocate_nodes() {
     auto old_node_count = node_count;
 
+    // TODO: use a more efficient method of remapping
+    if (-1 == msync(nodes, old_node_count * block_size, MS_SYNC)) {
+        perror("msync");
+        throw Error("Could not synchronize mmpapped memory");
+    }
+    if (-1 == munmap(nodes, old_node_count * block_size)) {
+        perror("munmap");
+        throw Error("Could not unmap mmapped memory");
+    };
     node_count = 2 * node_count +  1;
-    nodes = (char*)realloc(nodes, node_count * NODE_SIZE);
-    if (!nodes) throw Error("Could not add new nodes - out of memory");
+    if (-1 == ftruncate(fd, node_count * block_size)) {
+        perror("ftruncate");
+        throw Error("Could not resize data file (ftruncate)");
+    }
+    nodes = (char*)mmap(
+        nodes,
+        node_count * block_size,
+        PROT_READ | PROT_WRITE,
+        MAP_SHARED,
+        fd,
+        0);
+
+    if (nodes == (char*)MAP_FAILED) {
+        perror("mmap");
+        throw Error("Could not add new nodes (mmap)");
+    }
 
     int i;
     for (i = old_node_count; i < node_count; i++) {
@@ -81,6 +135,29 @@ int BTreeForwardIndex::find_insert_pos(const NodeRef &n, StringIndex id_idx) {
 }
 
 
+bool BTreeForwardIndex::has_space(const NodeRef &rn) const {
+    ForwardIndexNode &n = *rn;
+    return ((char*)(n.items + n.num_items + 2) <= (char*)&n + block_size);
+}
+
+
+void BTreeForwardIndex::add_item(const NodeRef &nr, int pos, StringIndex id_idx, uint32_t content_idx) {
+    assert(has_space(nr));
+
+    ForwardIndexNode &n = *nr;
+    assert(pos <= n.num_items);
+
+    for (int i = n.num_items; i >= pos; i--) {
+        n.items[i + 1].id_idx = n.items[i].id_idx;
+        n.items[i + 1].content_idx = n.items[i].content_idx;
+    }
+    n.num_items++;
+
+    n.items[pos].id_idx = id_idx;
+    n.items[pos].content_idx = content_idx;
+}
+
+
 void BTreeForwardIndex::split_node(
     const NodeRef &left,
     const NodeRef &right,
@@ -88,7 +165,7 @@ void BTreeForwardIndex::split_node(
 ) {
     for (int i = split_pos; i < left->num_items; i++) {
         auto src = &(left->items[i]);
-        right->add_item(right->num_items, src->id_idx, src->content_idx);
+        add_item(right, right->num_items, src->id_idx, src->content_idx);
     }
     left->num_items = split_pos;
 
@@ -107,8 +184,8 @@ void BTreeForwardIndex::insert_rec(
     auto n = path.front().first;
     path.pop_front();
 
-    if (n->has_space()) {
-        n->add_item(insert_at, id_idx, content_idx);
+    if (has_space(n)) {
+        add_item(n, insert_at, id_idx, content_idx);
         return;
     } else {
         // grow tree
@@ -119,14 +196,13 @@ void BTreeForwardIndex::insert_rec(
         if (insert_at <= low_half) {
             split_node(n, new_sibling, low_half);
             // insert left
-            n->add_item(insert_at, id_idx, content_idx);
+            add_item(n, insert_at, id_idx, content_idx);
         } else {
             split_node(n, new_sibling, low_half + 1);
             // insert right
-            new_sibling->add_item(insert_at - low_half - 1,
-                                  id_idx, content_idx);
+            add_item(new_sibling, insert_at - low_half - 1, id_idx, content_idx);
         }
-        assert(abs(n->num_items - new_sibling->num_items) <= 1);
+        assert(abs((int64_t)n->num_items - (int64_t)new_sibling->num_items) <= 1);
 
         // insert the new leaf into parent (recurse if necessary)
         if (!path.empty()) {
@@ -139,8 +215,8 @@ void BTreeForwardIndex::insert_rec(
                 idx_in_parent + 1);
         } else {
             auto new_root = initialize_new_node(ForwardIndexNode::NODE);
-            new_root->add_item(0, n->get_id_idx_at(0), n.index);
-            new_root->add_item(1, new_sibling->get_id_idx_at(0), new_sibling.index);
+            add_item(new_root, 0, n->get_id_idx_at(0), n.index);
+            add_item(new_root, 1, new_sibling->get_id_idx_at(0), new_sibling.index);
             root_node = new_root.index;
         }
     }
@@ -157,9 +233,11 @@ void BTreeForwardIndex::insert(shared_ptr<Entity> e) {
     ki.navigateToLeaf(e->id);
 
     insert_rec(ki.path(), id_idx, content_idx, find_insert_pos(ki.node(), id_idx));
+
+    item_count++;
 }
 
 
 shared_ptr<IForwardIndex> open_forward_index() {
-    return make_shared<BTreeForwardIndex>();
+    return make_shared<BTreeForwardIndex>("data/btree", 4096);
 }

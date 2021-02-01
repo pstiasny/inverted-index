@@ -46,13 +46,20 @@ void TreeCursor::down() {
 }
 
 
-//void TreeCursor::up() {
-    //assert(!_path.empty());
-    //auto p = _path.front();
-    //node_idx = p.first.index;
-    //item_idx = p.second;
-    //_path.pop_front();
-//}
+void TreeCursor::up() {
+    assert(!_path.empty());
+    _path.pop_front();
+
+    assert(!_path.empty());
+    auto p = _path.front();
+    node_idx = p.first.index;
+    item_idx = p.second;
+}
+
+
+bool TreeCursor::top() {
+    return node_idx == tree->root_node;
+}
 
 
 bool TreeCursor::last() {

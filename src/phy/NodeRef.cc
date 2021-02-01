@@ -9,5 +9,11 @@ NodeRef::NodeRef(BTreeForwardIndex *tree, int index) {
 
 ForwardIndexNode * NodeRef::operator->() const {
     assert(index < tree->node_count);
-    return (ForwardIndexNode*)(tree->nodes + index * NODE_SIZE);
+    return (ForwardIndexNode*)(tree->nodes + index * tree->block_size);
+}
+
+
+ForwardIndexNode& NodeRef::operator*() const {
+    assert(index < tree->node_count);
+    return *(ForwardIndexNode*)(tree->nodes + index * tree->block_size);
 }

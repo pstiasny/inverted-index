@@ -3,10 +3,11 @@
 
 DB::DB(string log_path) : log(log_path) {
     forward_index = open_forward_index();
+    inverted_index = open_inverted_index();
 
     shared_ptr<AddOp> op;
     while ((op = log.readOp())) {
-        op->operate(inverted_index, *forward_index);
+        op->operate(*inverted_index, *forward_index);
     }
 }
 
@@ -15,7 +16,7 @@ DB::~DB() {
 }
 
 PostingList DB::query(const Term &q) {
-    return inverted_index[q.t];
+    return inverted_index->get(q.t);
 }
 
 PostingList DB::query(const And &q) {
@@ -39,7 +40,7 @@ void DB::add(const shared_ptr<Entity> &e) {
 
     AddOp add_op {log.getNextSeqid(), e};
     log.writeOp(add_op);
-    add_op.operate(inverted_index, *forward_index);
+    add_op.operate(*inverted_index, *forward_index);
 }
 
 void DB::close() {

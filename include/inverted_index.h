@@ -101,8 +101,6 @@ class And : public Query {
     }
 };
 
-typedef unordered_map<string, PostingList> InvertedIndex;
-
 
 class IForwardIndex {
     public:
@@ -113,14 +111,23 @@ class IForwardIndex {
 shared_ptr<IForwardIndex> open_forward_index();
 
 
+class IInvertedIndex {
+    public:
+    virtual PostingList get(const string &word) = 0;
+    virtual void insert(const string &word, shared_ptr<Entity> e) = 0;
+};
+
+shared_ptr<IInvertedIndex> open_inverted_index();
+
+
 struct AddOp {
     int seqid;
     shared_ptr<Entity> e;
 
-    void operate(InvertedIndex &ii, IForwardIndex &fi);
+    void operate(IInvertedIndex &ii, IForwardIndex &fi);
 
     private:
-    void addEntityToInvertedIndex(InvertedIndex &ii, const shared_ptr<Entity> &e);
+    void addEntityToInvertedIndex(IInvertedIndex &ii, const shared_ptr<Entity> &e);
 };
 
 class Log {
@@ -158,7 +165,7 @@ class DB : public IDB {
     void close();
 
     private:
-    InvertedIndex inverted_index;
+    shared_ptr<IInvertedIndex> inverted_index;
     shared_ptr<IForwardIndex> forward_index;
     Log log;
 };
