@@ -7,13 +7,16 @@ NodeRef::NodeRef(BTreeForwardIndex *tree, int index) {
 }
 
 
-ForwardIndexNode * NodeRef::operator->() const {
+Node * NodeRef::get() const {
     assert(index < tree->node_count);
-    return (ForwardIndexNode*)(tree->nodes + index * tree->block_size);
+    return (Node*)(tree->nodes + index * tree->block_size);
+}
+
+Node * NodeRef::operator->() const {
+    return get();
 }
 
 
-ForwardIndexNode& NodeRef::operator*() const {
-    assert(index < tree->node_count);
-    return *(ForwardIndexNode*)(tree->nodes + index * tree->block_size);
+Node& NodeRef::operator*() const {
+    return *get();
 }

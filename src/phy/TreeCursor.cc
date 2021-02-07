@@ -1,4 +1,5 @@
 #include "phy.h"
+#include <locale>
 
 
 TreeCursor::TreeCursor(BTreeForwardIndex *tree) : tree(tree) {
@@ -82,35 +83,68 @@ bool TreeCursor::nodeHasNext() {
 
 bool TreeCursor::leaf() {
     auto n = node();
-    return n->type == ForwardIndexNode::LEAF;
+    return n->type == Node::LEAF;
 }
 
 
 const char * TreeCursor::key() {
     auto n = node();
-    assert(n->type == ForwardIndexNode::LEAF);
     assert(item_idx < n->num_items);
-    return tree->sp.get(n->items[item_idx].id_idx);
+    return tree->sp.get(n->items[item_idx].key_idx);
 }
 
 const char * TreeCursor::nextKey() {
     auto n = node();
     assert(nodeHasNext());
-    return tree->sp.get(n->items[item_idx + 1].id_idx);
+    return tree->sp.get(n->items[item_idx + 1].key_idx);
 }
 
 const char * TreeCursor::content() {
     auto n = node();
-    assert(n->type == ForwardIndexNode::LEAF);
+    assert(n->type == Node::LEAF);
     assert(item_idx < n->num_items);
     return tree->sp.get(n->items[item_idx].content_idx);
 }
 
 
-void TreeCursor::navigateToLeaf(const string &id) {
+void TreeCursor::navigateToLeaf(const char *key_) {
+    auto key_len = strlen(key_);
     while (!leaf()) {
-        while (nodeHasNext() && (nextKey() <= id))
+        while (
+            nodeHasNext() &&
+            (tree->compare_keys(node(), item_idx + 1, key_len, key_) >= 0)
+        ) {
             next();
+        }
         down();
     }
+}
+
+
+void TreeCursor::walk(TreeVisitor &tv) {
+    if (leaf()) tv.enterLeaf(*this, node()); else tv.enterNode(*this, node());
+
+    while (true) {
+        if (top() && lastInNode()) break;
+
+        if (lastInNode()) {
+            if (leaf()) tv.exitLeaf(*this, node()); else tv.exitNode(*this, node());
+            up();
+            next();
+            continue;
+        }
+
+        if (leaf()) {
+            while (!lastInNode()) {
+                tv.enterLeafItem(*this, node(), item_idx, &node()->items[item_idx]);
+                next();
+            }
+        } else {
+            tv.enterNodeItem(*this, node(), item_idx, &node()->items[item_idx]);
+            down();
+            if (leaf()) tv.enterLeaf(*this, node()); else tv.enterNode(*this, node());
+        }
+    }
+
+    if (leaf()) tv.exitLeaf(*this, node()); else tv.exitNode(*this, node());
 }
