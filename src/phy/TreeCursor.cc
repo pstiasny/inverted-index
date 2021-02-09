@@ -38,6 +38,18 @@ void TreeCursor::next() {
 }
 
 
+void TreeCursor::moveToItem(int idx) {
+    auto n = node();
+
+    assert(idx >= 0);
+    assert(idx < n->num_items);
+
+    item_idx = idx;
+    _path.pop_front();
+    _path.push_front(make_pair(n, item_idx));
+}
+
+
 void TreeCursor::down() {
     assert(!leaf());
     auto n = node();
@@ -107,17 +119,35 @@ const char * TreeCursor::content() {
 }
 
 
+void TreeCursor::navigateToItem(size_t key_len, const char *key_) {
+    NodeRef n = node();
+    int low = 0, high = n->num_items;
+    int mid;
+    KeyCmp cmp;
+
+    while (high > low) {
+        mid = (low + high) / 2;
+        moveToItem(mid);
+        cmp = tree->compare_keys(n, mid, key_len, key_);
+        if (cmp == KEY_MATCHES_ITEM) {
+            break;
+        } else if (cmp == KEY_BELOW_ITEM) {
+            high = mid;
+        } else if (cmp == KEY_ABOVE_ITEM) {
+            low = mid + 1;
+        }
+    }
+    if (cmp == KEY_BELOW_ITEM) moveToItem(max(0, item_idx - 1));
+}
+
+
 void TreeCursor::navigateToLeaf(const char *key_) {
     auto key_len = strlen(key_);
     while (!leaf()) {
-        while (
-            nodeHasNext() &&
-            (tree->compare_keys(node(), item_idx + 1, key_len, key_) >= 0)
-        ) {
-            next();
-        }
+        navigateToItem(key_len, key_);
         down();
     }
+    navigateToItem(key_len, key_);
 }
 
 

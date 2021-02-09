@@ -20,3 +20,12 @@ Node * NodeRef::operator->() const {
 Node& NodeRef::operator*() const {
     return *get();
 }
+
+bool NodeRef::operator==(const NodeRef &other) const {
+    return (tree == other.tree) && (index == other.index);
+}
+
+ostream& operator<<(ostream& os, const NodeRef& nr) {
+    os << "NodeRef(..., " << nr.index << ")";
+    return os;
+}

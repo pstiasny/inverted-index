@@ -7,6 +7,11 @@
 
 typedef uint32_t StringIndex;
 
+enum KeyCmp {
+    KEY_BELOW_ITEM   = -1,
+    KEY_MATCHES_ITEM = 0,
+    KEY_ABOVE_ITEM   = 1,
+};
 
 struct NodeItem {
     StringIndex key_idx;
@@ -89,7 +94,12 @@ class NodeRef {
     Node * operator->() const;
     Node& operator*() const;
     Node * get() const;
+    
+    bool operator==(const NodeRef &other) const;
+
 };
+
+ostream& operator<<(ostream& os, const NodeRef& nr);
 
 
 class BTreeForwardIndex : public IForwardIndex {
@@ -139,7 +149,7 @@ class BTreeForwardIndex : public IForwardIndex {
         const char *key_data,
         uint32_t content_idx
     );
-    int compare_keys(const NodeRef &nr, int item_idx, size_t key_len, const char *key) const;
+    KeyCmp compare_keys(const NodeRef &nr, int item_idx, size_t key_len, const char *key) const;
 };
 
 
@@ -190,8 +200,10 @@ class TreeCursor {
     const char * content();
     NodeRef node();
     int getItemIdx() { return item_idx; }
+    void moveToItem(int idx);
     const forward_list<pair<NodeRef, int>> & path();
 
+    void navigateToItem(size_t key_len, const char *key);
     void navigateToLeaf(const char *key);
     void walk(TreeVisitor &tv);
 

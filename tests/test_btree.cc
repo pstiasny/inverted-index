@@ -19,27 +19,20 @@ class InvariantChecker : public TreeVisitor {
         counted_items = 0;
     }
 
-    virtual void enterNode(TreeCursor &tc, NodeRef nr) {
-        _enter(tc, nr);
-    };
-    virtual void enterLeaf(TreeCursor &tc, NodeRef nr) {
-        _enter(tc, nr);
-    };
-    virtual void _enter(TreeCursor &tc, NodeRef nr) {
-        string s = nr->copy_inner_key_data(0);
-        if (init)
-            ASSERT_EQ(sinner, s);
-        else
-            sinner = s;
-    };
     virtual void enterNodeItem(TreeCursor &tc, NodeRef nr, int item_idx, NodeItem *item) {
-        _enter_item(tc, nr, item_idx, item);
+        string s = nr->copy_inner_key_data(item_idx);
+
+        if (strlen(tc.key()) <= INNER_KEY_LEN)
+            ASSERT_EQ(s, tc.key()) << "node " << nr.index << " item " << item_idx;
+
+        if (item_idx > 0) {
+            ASSERT_TRUE(sinner <= s) << "node " << nr.index << " item " << item_idx;
+            sinner = s;
+        }
     };
     virtual void enterLeafItem(TreeCursor &tc, NodeRef nr, int item_idx, NodeItem *item) {
-        _enter_item(tc, nr, item_idx, item);
         ++counted_items;
-    };
-    void _enter_item(TreeCursor &tc, NodeRef nr, int item_idx, NodeItem *item) {
+
         string s = nr->copy_inner_key_data(item_idx);
 
         if (strlen(tc.key()) <= INNER_KEY_LEN)
@@ -47,9 +40,7 @@ class InvariantChecker : public TreeVisitor {
 
         ASSERT_TRUE(sinner <= s) << "node " << nr.index << " item " << item_idx;
         sinner = s;
-    }
-    virtual void exitNode(TreeCursor &tc, NodeRef nr) {};
-    virtual void exitLeaf(TreeCursor &tc, NodeRef nr) {};
+    };
 };
 
 
@@ -84,11 +75,15 @@ TEST_F(TestBTreeInvertedIndex, TestSequentialAddThenGet) {
         auto e = make_shared<Entity>(to_string(i), "test content " + to_string(i));
         btree->insert(e);
 
-        //check_tree_invariants();
-        //if (HasFatalFailure()) { print_tree(); return; }
+        // The check scans the whole tree.  For performance reasons
+        // we do it only for the first 100 inserts and at the end.
+        if (i < 100) {  
+            check_tree_invariants();
+            if (HasFatalFailure()) { print_tree(); return; }
+        }
     }
-        check_tree_invariants();
-        if (HasFatalFailure()) { print_tree(); return; }
+    check_tree_invariants();
+    if (HasFatalFailure()) { print_tree(); return; }
 
     for (i = 0; i < 10000; i++) {
         auto result = btree->get(to_string(i));
@@ -112,7 +107,16 @@ TEST_F(TestBTreeInvertedIndex, TestRandomAddThenGet) {
     for (int j : to_add) {
         auto e = make_shared<Entity>(to_string(j), "test content " + to_string(j));
         btree->insert(e);
+
+        // The check scans the whole tree.  For performance reasons
+        // we do it only for the first 100 inserts and at the end.
+        if (i < 100) {  
+            check_tree_invariants();
+            if (HasFatalFailure()) { print_tree(); return; }
+        }
     }
+    check_tree_invariants();
+    if (HasFatalFailure()) { print_tree(); return; }
 
     shuffle(to_add.begin(), to_add.end(), default_random_engine(4321));
     for (int j : to_add) {
@@ -135,11 +139,11 @@ TEST_F(TestBTreeInvertedIndex, TestCompareKeysShort) {
     StringIndex si = btree->sp.append(s);
     btree->add_item(nr.get(), 0, si, 1, s, 1234);
 
-    EXPECT_TRUE(btree->compare_keys(nr, 0, 0, "") < 0);
-    EXPECT_TRUE(btree->compare_keys(nr, 0, 1, "a") < 0);
-    EXPECT_EQ(btree->compare_keys(nr, 0, 1, "b"), 0);
-    EXPECT_TRUE(btree->compare_keys(nr, 0, 2, "bb") > 0);
-    EXPECT_TRUE(btree->compare_keys(nr, 0, 1, "c") > 0);
+    EXPECT_EQ(btree->compare_keys(nr, 0, 0, ""), KEY_BELOW_ITEM);
+    EXPECT_EQ(btree->compare_keys(nr, 0, 1, "a"), KEY_BELOW_ITEM);
+    EXPECT_EQ(btree->compare_keys(nr, 0, 1, "b"), KEY_MATCHES_ITEM);
+    EXPECT_EQ(btree->compare_keys(nr, 0, 2, "bb"), KEY_ABOVE_ITEM);
+    EXPECT_EQ(btree->compare_keys(nr, 0, 1, "c"), KEY_ABOVE_ITEM);
 }
 
 
@@ -157,13 +161,106 @@ TEST_F(TestBTreeInvertedIndex, TestCompareKeysLong) {
                *c = "cccccccccccccccccccccccccccccccc";
     EXPECT_EQ(
         btree->compare_keys(nr, 0, strlen(a), a),
-        -1);
+        KEY_BELOW_ITEM);
     EXPECT_EQ(
         btree->compare_keys(nr, 0, strlen(b), b),
-        0);
+        KEY_MATCHES_ITEM);
     EXPECT_EQ(
         btree->compare_keys(nr, 0, strlen(c), c),
-        1);
+        KEY_ABOVE_ITEM);
+}
+
+
+TEST_F(TestBTreeInvertedIndex, TestNavigateToItem) {
+    NodeRef nr = btree->get_node_at_index(0);
+
+    const char *k1 = "b", *k2 = "d";
+    StringIndex k1_idx = btree->sp.append(k1),
+                k2_idx = btree->sp.append(k2);
+
+    btree->add_item(nr.get(), 0, k1_idx, 1, k1, 1000);
+    btree->add_item(nr.get(), 1, k2_idx, 1, k2, 2000);
+
+    {
+        TreeCursor tc(btree);
+        tc.navigateToItem(1, "a");
+        ASSERT_EQ(tc.getItemIdx(), 0);
+    }
+
+    {
+        TreeCursor tc(btree);
+        tc.navigateToItem(1, "b");
+        ASSERT_EQ(tc.getItemIdx(), 0);
+    }
+
+    {
+        TreeCursor tc(btree);
+        tc.navigateToItem(1, "c");
+        ASSERT_EQ(tc.getItemIdx(), 0);
+    }
+
+    {
+        TreeCursor tc(btree);
+        tc.navigateToItem(1, "d");
+        ASSERT_EQ(tc.getItemIdx(), 1);
+    }
+
+    {
+        TreeCursor tc(btree);
+        tc.navigateToItem(1, "e");
+        ASSERT_EQ(tc.getItemIdx(), 1);
+    }
+}
+
+TEST_F(TestBTreeInvertedIndex, TestNavigateToLeaf) {
+    NodeRef root  = btree->initialize_new_node(Node::NODE),
+            leaf1 = btree->initialize_new_node(Node::LEAF),
+            leaf2 = btree->initialize_new_node(Node::LEAF);
+    btree->root_node = root.index;
+
+    const char *k1 = "b", *k2 = "d";
+    StringIndex k1_idx = btree->sp.append(k1),
+                k2_idx = btree->sp.append(k2);
+
+    btree->add_item(leaf1.get(), 0, k1_idx, 1, k1, 1000);
+    btree->add_item(leaf2.get(), 0, k2_idx, 1, k2, 2000);
+    btree->add_item(root.get(), 0, k1_idx, 1, k1, leaf1.index);
+    btree->add_item(root.get(), 1, k2_idx, 1, k2, leaf2.index);
+
+    {
+        TreeCursor tc(btree);
+        tc.navigateToLeaf("a");
+        ASSERT_EQ(tc.path(), (forward_list<pair<NodeRef, int>>{{leaf1, 0}, {root, 0}}));
+        ASSERT_EQ(tc.node(), leaf1);
+    }
+
+    {
+        TreeCursor tc(btree);
+        tc.navigateToLeaf("b");
+        ASSERT_EQ(tc.path(), (forward_list<pair<NodeRef, int>>{{leaf1, 0}, {root, 0}}));
+        ASSERT_EQ(tc.node(), leaf1);
+    }
+
+    {
+        TreeCursor tc(btree);
+        tc.navigateToLeaf("c");
+        ASSERT_EQ(tc.path(), (forward_list<pair<NodeRef, int>>{{leaf1, 0}, {root, 0}}));
+        ASSERT_EQ(tc.node(), leaf1);
+    }
+
+    {
+        TreeCursor tc(btree);
+        tc.navigateToLeaf("d");
+        ASSERT_EQ(tc.path(), (forward_list<pair<NodeRef, int>>{{leaf2, 0}, {root, 1}}));
+        ASSERT_EQ(tc.node(), leaf2);
+    }
+
+    {
+        TreeCursor tc(btree);
+        tc.navigateToLeaf("e");
+        ASSERT_EQ(tc.path(), (forward_list<pair<NodeRef, int>>{{leaf2, 0}, {root, 1}}));
+        ASSERT_EQ(tc.node(), leaf2);
+    }
 }
 
 

@@ -116,12 +116,14 @@ shared_ptr<Entity> BTreeForwardIndex::get(const string &id) {
 
     ki.navigateToLeaf(key);
 
-    for (; !ki.lastInNode(); ki.next()) {
-        if (0 == compare_keys(ki.node(), ki.getItemIdx(), inner_key_length, key)) {
-            return make_shared<Entity>(id, ki.content());
-        }
+    if (
+        !ki.lastInNode() &&
+        (KEY_MATCHES_ITEM == compare_keys(ki.node(), ki.getItemIdx(), inner_key_length, key))
+    ) {
+        return make_shared<Entity>(id, ki.content());
+    } else {
+        return nullptr;
     }
-    return nullptr;
 }
 
 
@@ -138,7 +140,7 @@ int BTreeForwardIndex::find_insert_pos(
         i = 0;
 
     for (; i < n->num_items; i++) {
-        if (compare_keys(n, i, inner_key_length, key_data) < 0) return i;
+        if (compare_keys(n, i, inner_key_length, key_data) == KEY_BELOW_ITEM) return i;
     }
     return n->num_items;
 }
@@ -299,7 +301,7 @@ void BTreeForwardIndex::insert_rec(
     }
 }
 
-int BTreeForwardIndex::compare_keys(
+KeyCmp BTreeForwardIndex::compare_keys(
     const NodeRef &nr,
     int item_idx,
     size_t key_len,
@@ -311,19 +313,25 @@ int BTreeForwardIndex::compare_keys(
         nr->get_inner_key_data_ptr(item_idx),
         item->inner_key_length);
 
+    int cmp;
+
     if (item->inner_key_length == max_inner_key_length) {
         if (inner_cmp == 0) {
-            return strcmp(
+            cmp = strcmp(
                 key,
                 sp.get(item->key_idx));
         } else {
-            return inner_cmp;
+            cmp = inner_cmp;
         }
     } else {
         if ((inner_cmp == 0) && (key_len > item->inner_key_length))
-            return 1;
-        return inner_cmp;
+            return KEY_ABOVE_ITEM;
+        cmp = inner_cmp;
     }
+
+    if (cmp < 0) return KEY_BELOW_ITEM;
+    else if (cmp == 0) return KEY_MATCHES_ITEM;
+    else return KEY_ABOVE_ITEM;
 }
 
 void BTreeForwardIndex::insert(shared_ptr<Entity> e) {
